@@ -103,10 +103,11 @@ def reconnect(sid, data):
 # Manejar la recepción de mensajes
 @sio.event
 def mensaje(sid, data):
-    print(f'Mensaje recibido: {data}')
-    mensaje = data['newMessage']
-    contrincante = data['userContrincante']
-    codigo = obtener_codigo_por_nombre(usuarios_conectados, contrincante)
+    print(f'SERVER ||Mensaje recibido: {data}')
+    mensaje = data['Message']
+    messageTo = data['to']
+    codigo = obtener_codigo_por_nombre(usuarios_conectados, messageTo)
+    print(f'SERVER || Reenviado a: {codigo}')
     sio.emit("mensajeCliente", mensaje, to=codigo)
 
 @sio.event
@@ -225,7 +226,39 @@ def getUserConectados(sid):
         sio.emit("getUserOnlineResp", {"success": True, "data": list(usuarios_conectados.keys())}, to=sid_actual)
 
     # sio.emit("getUserOnlineResp", {"success": True, "data": list(usuarios_conectados.keys())}, to=sid)
-    
+
+
+@sio.event
+def save_chat(sid, data):
+    connDB = ConexionDB()
+    if connDB is None:
+        print("Error: No se pudo conectar a la base de datos.")
+        sio.emit("registroChatRespuesta", {"success": False, "message": "Error en el servidor"}, to=sid)
+
+    try:
+        cursor = connDB.cursor()
+        sql = "SELECT code FROM Chats c  WHERE code like '%'%s'%' and code like '%'%s'%';"
+        cursor.execute(sql, (data["user1"], data["user2"]))
+        resultado = cursor.fetchone()
+
+        if resultado:
+            sql = """
+                UPDATE Chats SET chat=%s WHERE code like '%'%s'%' and code like '%'%s'%'
+            """   
+            cursor.execute(sql, (data["chat"], data["user1"], data["user2"]))
+        else:
+            sql = """
+                INSERT INTO Chats (code, chat)
+                VALUES (%s, %s);
+            """   
+            cursor.execute(sql, (data["code"], data["chat"]))
+        connDB.commit()
+        sio.emit("registroChatRespuesta", {"success": True, "message": "Chat registrado con éxito"}, to=sid)
+    except Exception as e:
+        print(f"Error al insertar el usuario: {e}")
+        sio.emit("registroChatRespuesta", {"success": False, "message": "Error en el servidor"}, to=sid)
+
+
 # Ejecutar el servidor
 if __name__ == '__main__':
     # eventlet.wsgi.server(eventlet.listen(('localhost', 5000)), app)   
