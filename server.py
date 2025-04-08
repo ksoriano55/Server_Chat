@@ -104,7 +104,6 @@ def mensaje(sid, data):
     mensaje = data['Message']
     messageTo = data['to']
     codigo = obtener_codigo_por_nombre(usuarios_conectados, messageTo)
-    print(f'SERVER || Reenviado a: {codigo}')
     sio.emit("mensajeCliente", mensaje, to=codigo)
 
 @sio.event
@@ -190,13 +189,11 @@ def login(sid, data):
     try:
         usuario = data["usuario"]
         password = data["password"]
-        print(f"usuario: {usuario}, password: {password}")
         cursor = connDB.cursor()
         sql = "SELECT id, usuario, nombre, password FROM Usuarios WHERE usuario = %s;"
         
         cursor.execute(sql, (usuario, ))
         resultado = cursor.fetchone()
-        print(f"resultado: {resultado}")
         
         if resultado is None:
             sio.emit("loginRespuesta", {"success": False, "message": "Usuario no encontrado"}, to=sid)
@@ -204,7 +201,6 @@ def login(sid, data):
         
         password_hash = resultado[3].encode('utf-8')  
         if bcrypt.checkpw(password.encode('utf-8'), password_hash):
-            print("Contraseña correcta")
             sqlLogs = """
                     INSERT INTO LogsLogin (usuario , tipo , fecha )
                     VALUES (%s, 'CONEXION', NOW());
@@ -215,7 +211,6 @@ def login(sid, data):
             usuarios_conectados[usuario] = sid
             sio.emit("loginRespuesta", {"success": True, "message": "Login exitoso"}, to=sid)
         else:
-            print("Contraseña incorrecta")
             sio.emit("loginRespuesta", {"success": False, "message": "Credenciales incorrectas"}, to=sid)
     except KeyError as e:
         missing_key = str(e)
@@ -288,7 +283,6 @@ def saveBK_chat(sid, data):
 
 @sio.event
 def manejar_archivo(sid, data):
-    print(f"ARCHIVO ADJUNTO: {data}")
     messageTo = data["to"]
     codigo = obtener_codigo_por_nombre(usuarios_conectados, messageTo)
     sio.emit("archivo", data, to=codigo)
