@@ -38,24 +38,7 @@ def hash_password(password):
 def check_password(password, hashed):
     return bcrypt.checkpw(password.encode('utf-8'), hashed)
 
-def es_password_seguro(password):
-    if len(password) < 8:
-        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe tener al menos 8 caracteres."}, to=sid)
-        return False
-    if not re.search(r"[a-z]", password):
-        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos una letra minúscula."}, to=sid)
-        return False
-    if not re.search(r"[A-Z]", password):
-        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos una letra mayúscula."}, to=sid)
-        return False
-    if not re.search(r"[0-9]", password):
-        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos un número."}, to=sid)
-        return False
-    if not re.search(r"[\W_]", password):  # Caracter especial
-        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos un carácter especial."}, to=sid)
-        return False
-    return True
-# Manejar la conexión de un cliente
+
 @sio.event
 def connect(sid, environ):
     print(f"Cliente conectado: {sid}")
@@ -104,7 +87,8 @@ def disconnect(sid):
 @sio.event
 def reconnect(sid, data):
     # Se espera que el cliente envíe su identificador (e.g., nickname)
-    nickname = data.get("nickname")
+    print(f"Reconexión detectada para DATA: {data}")
+    nickname = data.get("usuario")
     if nickname:
         usuarios_conectados[nickname] = sid
         print(f"Usuario reconectado: {nickname}")
@@ -177,14 +161,14 @@ def get_usuarios(sid):
     try:
         cursor = connDB.cursor()
         sql = """
-            SELECT id, name, nickname, status, s.victories  FROM users u inner join statistics s on u.id  = s.userId ;
+            SELECT id, nombre, usuario  FROM Usuarios ;
         """
 
         cursor.execute(sql)
         usuarios = cursor.fetchall()
 
         usuarios_data = [
-            {"id": user[0], "name": user[1], "nickname": user[2], "victories":user[4], "status": user[3]}
+            {"id": user[0], "nombre": user[1], "usuario": user[2], "victories":0, "status": 0}
             for user in usuarios
         ]
 
@@ -193,6 +177,7 @@ def get_usuarios(sid):
     except Exception as e:
         print("Error al obtener los usuarios")
         sio.emit("getUsuarios", {"success": False, "message": "Error en el servidor"}, to=sid)
+
 
 #Obtener SID del diccionario de usuarios conectados
 def obtener_codigo_por_nombre(diccionario, nombre):
@@ -266,7 +251,7 @@ def getBK_chat(sid, data):
         connDB.commit()
         sio.emit("get_Chats", {"success": True, "data": chats[0]}, to=sid)
     except Exception as e:
-        print("Error al obtener los usuarios")
+        print("Error al obtener los chats")
         sio.emit("get_Chats", {"success": False, "message": "Error en el servidor"}, to=sid)
 
 @sio.event
