@@ -272,20 +272,26 @@ def saveBK_chat(sid, data):
             sql = """
                 UPDATE Chats SET chat=%s WHERE code LIKE %s AND code LIKE %s;
             """   
-            cursor.execute(sql, (json.dumps(data["chat"]), f"%{data['user1']}%",f"%{data['user2']}%"))
+            cursor.execute(sql, (data["chat"], f"%{data['user1']}%",f"%{data['user2']}%"))
         else:
             code = data["user1"] + data["user2"]
             sql = """
                 INSERT INTO Chats (code, chat)
                 VALUES (%s, %s);
             """ 
-            cursor.execute(sql, (code, json.dumps(data["chat"])))
+            cursor.execute(sql, (code, data["chat"]))
         connDB.commit()
         sio.emit("registroChatRespuesta", {"success": True, "message": "Chat registrado con éxito"}, to=sid)
     except Exception as e:
         print(f"Error al insertar el usuaridatao: {e}")
         sio.emit("registroChatRespuesta", {"success": False, "message": "Error en el servidor"}, to=sid)
 
+@sio.event
+def manejar_archivo(sid, data):
+    print(f"ARCHIVO ADJUNTO: {data}")
+    messageTo = data["to"]
+    codigo = obtener_codigo_por_nombre(usuarios_conectados, messageTo)
+    sio.emit("archivo", data, to=codigo)
 
 # Ejecutar el servidor
 if __name__ == '__main__':
