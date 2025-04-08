@@ -3,6 +3,8 @@ import os
 import eventlet
 import mysql.connector
 from mysql.connector import Error
+import bcrypt
+import re
 
 # Crear una instancia de Socket.IO
 sio = socketio.Server(cors_allowed_origins="*")
@@ -18,17 +20,41 @@ usuarios_playing = []
 def ConexionDB():
     try:
         connection = mysql.connector.connect(
-            host="34.42.104.166",
-            database="localhost",
-            user="root",
-            password="123456"
+            host="34.132.193.227",
+            database="chat-psa2",
+            user="admin",
+            password="admin123"
         )
         return connection
     except Error as ex:
         print(f"Error al conectarse a DB: {ex}")
         return None
 
+def hash_password(password):
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed
 
+def check_password(password, hashed):
+    return bcrypt.checkpw(password.encode('utf-8'), hashed)
+
+def es_password_seguro(password):
+    if len(password) < 8:
+        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe tener al menos 8 caracteres."}, to=sid)
+        return False
+    if not re.search(r"[a-z]", password):
+        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos una letra minúscula."}, to=sid)
+        return False
+    if not re.search(r"[A-Z]", password):
+        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos una letra mayúscula."}, to=sid)
+        return False
+    if not re.search(r"[0-9]", password):
+        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos un número."}, to=sid)
+        return False
+    if not re.search(r"[\W_]", password):  # Caracter especial
+        sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos un carácter especial."}, to=sid)
+        return False
+    return True
 # Manejar la conexión de un cliente
 @sio.event
 def connect(sid, environ):
@@ -93,16 +119,38 @@ def insert_usuario(sid, data):
     try:
         cursor = connDB.cursor()
         sql = """
-            INSERT INTO users (name, password, nickname, status)
-            VALUES (%s, %s, %s, %s);
+            INSERT INTO Usuarios (usuario, nombre, password)
+            VALUES (%s, %s, %s);
         """
-      
-        cursor.execute(sql, (data["name"], data["password"], data["nickname"], data["status"]))
+
+        if len(data["password"]) < 8:
+            sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe tener al menos 8 caracteres."}, to=sid)
+            return False
+        if not re.search(r"[a-z]", data["password"]):
+            sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos una letra minúscula."}, to=sid)
+            return False
+        if not re.search(r"[A-Z]", data["password"]):
+            sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos una letra mayúscula."}, to=sid)
+            return False
+        if not re.search(r"[0-9]", data["password"]):
+            sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos un número."}, to=sid)
+            return False
+        if not re.search(r"[\W_]", data["password"]):  # Caracter especial
+            sio.emit("registroRespuesta", {"success": False, "message": "La contraseña debe contener al menos un carácter especial."}, to=sid)
+            return False
+        # Hash de la contraseña
+        hashed_password = hash_password(data["password"])
+
+        cursor.execute(sql, (data["usuario"], data["nombre"],hashed_password))
         connDB.commit()
         sio.emit("registroRespuesta", {"success": True, "message": "Usuario registrado con éxito"}, to=sid)
     except Exception as e:
+        if "Duplicate" in str(e):
+            sio.emit("registroRespuesta", {"success": False, "message": "El usuario ya existe"}, to=sid)
+        else:
+            sio.emit("registroRespuesta", {"success": False, "message": "Error en el servidor"}, to=sid)
         print(f"Error al insertar el usuario: {e}")
-        sio.emit("registroRespuesta", {"success": False, "message": "Error en el servidor"}, to=sid)
+        
 
 #Obtener usuarios
 @sio.event
@@ -141,20 +189,28 @@ def obtener_codigo_por_nombre(diccionario, nombre):
 def login(sid, data):
     connDB = ConexionDB()
     try:
-        nickname = data["nickname"]
+        usuario = data["usuario"]
         password = data["password"]
+        print(f"usuario: {usuario}, password: {password}")
         cursor = connDB.cursor()
-        sql = "SELECT nickname FROM users u WHERE nickname = %s and password = %s;"
-        cursor.execute(sql, (nickname, password))
+        sql = "SELECT id, usuario, nombre, password FROM Usuarios WHERE usuario = %s;"
+        
+        cursor.execute(sql, (usuario, ))
         resultado = cursor.fetchone()
-
-        if resultado:
-            # Marcar cliente como conectado
-            usuarios_conectados[nickname] = sid
+        print(f"resultado: {resultado}")
+        
+        if resultado is None:
+            sio.emit("loginRespuesta", {"success": False, "message": "Usuario no encontrado"}, to=sid)
+            return
+        
+        password_hash = resultado[3].encode('utf-8')  
+        if bcrypt.checkpw(password.encode('utf-8'), password_hash):
+            print("Contraseña correcta")
+            usuarios_conectados[usuario] = sid
             sio.emit("loginRespuesta", {"success": True, "message": "Login exitoso"}, to=sid)
         else:
+            print("Contraseña incorrecta")
             sio.emit("loginRespuesta", {"success": False, "message": "Credenciales incorrectas"}, to=sid)
-
     except KeyError as e:
         missing_key = str(e)
         sio.emit("loginRespuesta", {"success": False, "message": f"Falta el campo: {missing_key}"}, to=sid)
