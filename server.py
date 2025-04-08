@@ -5,7 +5,7 @@ import mysql.connector
 from mysql.connector import Error
 import bcrypt
 import re
-
+import json
 # Crear una instancia de Socket.IO
 sio = socketio.Server(cors_allowed_origins="*")
 
@@ -227,9 +227,30 @@ def getUserConectados(sid):
 
     # sio.emit("getUserOnlineResp", {"success": True, "data": list(usuarios_conectados.keys())}, to=sid)
 
+@sio.event
+def getBK_chat(sid, data):
+    connDB = ConexionDB()
+    if connDB is None:
+        print("Error: No se pudo conectar a la base de datos.")
+        sio.emit("get_Chats", {"success": False, "message": "Error en el servidor"}, to=sid)
+
+    try:
+        cursor = connDB.cursor()
+        sql = """
+            SELECT chat FROM Chats WHERE code LIKE %s AND code LIKE %s;
+        """
+        cursor.execute(sql, (f"%{data['user1']}%", f"%{data['user2']}%"))
+
+        chats = cursor.fetchone()
+
+        connDB.commit()
+        sio.emit("get_Chats", {"success": True, "data": chats[0]}, to=sid)
+    except Exception as e:
+        print("Error al obtener los usuarios")
+        sio.emit("get_Chats", {"success": False, "message": "Error en el servidor"}, to=sid)
 
 @sio.event
-def save_chat(sid, data):
+def saveBK_chat(sid, data):
     connDB = ConexionDB()
     if connDB is None:
         print("Error: No se pudo conectar a la base de datos.")
@@ -237,25 +258,27 @@ def save_chat(sid, data):
 
     try:
         cursor = connDB.cursor()
-        sql = "SELECT code FROM Chats c  WHERE code like '%'%s'%' and code like '%'%s'%';"
-        cursor.execute(sql, (data["user1"], data["user2"]))
+        sql = "SELECT code FROM Chats WHERE code LIKE %s AND code LIKE %s;"
+        cursor.execute(sql, (f"%{data['user1']}%", f"%{data['user2']}%"))
+
         resultado = cursor.fetchone()
 
         if resultado:
             sql = """
-                UPDATE Chats SET chat=%s WHERE code like '%'%s'%' and code like '%'%s'%'
+                UPDATE Chats SET chat=%s WHERE code LIKE %s AND code LIKE %s;
             """   
-            cursor.execute(sql, (data["chat"], data["user1"], data["user2"]))
+            cursor.execute(sql, (json.dumps(data["chat"]), f"%{data['user1']}%",f"%{data['user2']}%"))
         else:
+            code = data["user1"] + data["user2"]
             sql = """
                 INSERT INTO Chats (code, chat)
                 VALUES (%s, %s);
-            """   
-            cursor.execute(sql, (data["code"], data["chat"]))
+            """ 
+            cursor.execute(sql, (code, json.dumps(data["chat"])))
         connDB.commit()
         sio.emit("registroChatRespuesta", {"success": True, "message": "Chat registrado con éxito"}, to=sid)
     except Exception as e:
-        print(f"Error al insertar el usuario: {e}")
+        print(f"Error al insertar el usuaridatao: {e}")
         sio.emit("registroChatRespuesta", {"success": False, "message": "Error en el servidor"}, to=sid)
 
 
