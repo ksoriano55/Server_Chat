@@ -65,8 +65,21 @@ def connect(sid, environ):
 def disconnect(sid):
     print("Usuario Desconectado")
     # Buscar el usuario desconectado por su SID
+    print (f"SID desconectado: {sid}")
     usuario_desconectado = None
     for usuario, sid_actual in usuarios_conectados.items():
+        connDB = ConexionDB()
+        if connDB is None:
+            print("Error: No se pudo conectar a la base de datos.")
+            sio.emit("registroRespuesta", {"success": False, "message": "Error en el servidor"}, to=sid)
+        cursor = connDB.cursor()
+        sqlLogs = """
+                    INSERT INTO LogsLogin (usuario , tipo , fecha )
+                    VALUES (%s, 'DESCONEXION', NOW());
+            """
+        cursor.execute(sqlLogs, (usuario, ))
+        connDB.commit()
+
         if sid_actual == sid:
             usuario_desconectado = usuario
             break
@@ -207,6 +220,13 @@ def login(sid, data):
         password_hash = resultado[3].encode('utf-8')  
         if bcrypt.checkpw(password.encode('utf-8'), password_hash):
             print("Contraseña correcta")
+            sqlLogs = """
+                    INSERT INTO LogsLogin (usuario , tipo , fecha )
+                    VALUES (%s, 'CONEXION', NOW());
+            """
+            cursor.execute(sqlLogs, (usuario, ))
+            connDB.commit()
+
             usuarios_conectados[usuario] = sid
             sio.emit("loginRespuesta", {"success": True, "message": "Login exitoso"}, to=sid)
         else:
